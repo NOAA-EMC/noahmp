@@ -55,6 +55,7 @@ module lnd_comp_types
     integer                     :: km             ! vertical soil layer dimension
     integer                     :: lsnowl = -2    ! lower bound of vertical dimension of surface snow
     integer                     :: itime = huge(1)! not used, set to something huge by default
+    logical                     :: flag_init = .false. ! not used in component model
     integer                     :: isot           ! sfc soil type data source zobler or statsgo
     integer                     :: ivegsrc        ! sfc veg type data source umd or igbp
     integer                     :: idveg          ! option for dynamic vegetation
@@ -281,7 +282,7 @@ module lnd_comp_types
      real(kind=r8)              :: initial_emiss                     ! initial value for the emissivity (constant in everywhere)
      real(kind=r8)              :: initial_albedo                    ! initial value for the monthly albedo (constant in everywhere)
      character*10               :: decomp_type                       ! decomposition type: default or custom
-     logical                    :: debug_level                       ! debug level
+     integer                    :: debug_level                       ! debug level
   end type namelist_type
 
   type noahmp_type
