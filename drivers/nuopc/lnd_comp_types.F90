@@ -55,7 +55,6 @@ module lnd_comp_types
     integer                     :: km             ! vertical soil layer dimension
     integer                     :: lsnowl = -2    ! lower bound of vertical dimension of surface snow
     integer                     :: itime = huge(1)! not used, set to something huge by default
-    logical                     :: flag_init = .false. ! not used in component model
     integer                     :: isot           ! sfc soil type data source zobler or statsgo
     integer                     :: ivegsrc        ! sfc veg type data source umd or igbp
     integer                     :: idveg          ! option for dynamic vegetation

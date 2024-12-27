@@ -600,7 +600,7 @@ contains
     call noahmpdrv_run( &
     !  ---  inputs:
          noahmp%static%im      , noahmp%static%km       , noahmp%static%lsnowl   , &
-         noahmp%static%itime   , noahmp%static%flag_init, &
+         noahmp%static%itime   , &
          noahmp%forc%ps        , noahmp%model%u1        , noahmp%model%v1        , &
          noahmp%forc%t1        , noahmp%forc%q1         , noahmp%model%soiltyp   , &
          noahmp%model%soilcol  , &
