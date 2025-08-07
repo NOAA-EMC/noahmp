@@ -113,6 +113,7 @@ jobs:
           component_build: |
             export PATH=${{ env.DEP_INSTALL_DIR }}/view/bin:$PATH
             export ESMFMKFILE=${{ env.DEP_INSTALL_DIR }}/view/lib/esmf.mk
+            export ESMF_ROOT=${{ env.DEP_INSTALL_DIR }}/view
             export NetCDF_ROOT=${{ env.DEP_INSTALL_DIR }}/view
             export FC=gfortran
             cd ${{ env.APP_INSTALL_DIR }}/noahmp
