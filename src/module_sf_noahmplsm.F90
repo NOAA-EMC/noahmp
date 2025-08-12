@@ -6856,7 +6856,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 !! temperature is below 273.15k (tfrz). requires newton-type iteration
 !! to solve the nonlinear implicit equation given in eqn 17 of koren et al.
 !! (1999, jgr, vol 104(d16),19569-19585)
-subroutine frh2o (parameters,isoil,free,tkelv,smc,sh2o,&
+  subroutine frh2o (parameters,isoil,free,tkelv,smc,sh2o,&
 #ifdef CCPP
      errmsg,errflg)
 #else
@@ -6891,7 +6891,7 @@ subroutine frh2o (parameters,isoil,free,tkelv,smc,sh2o,&
 !   free..........supercooled liquid water content [m3/m3]
 ! ----------------------------------------------------------------------
     implicit none
-  type (noahmp_parameters), intent(in) :: parameters
+    type (noahmp_parameters), intent(in) :: parameters
     integer,intent(in)   :: isoil
     real (kind=kind_phys), intent(in)     :: sh2o,smc,tkelv
     real (kind=kind_phys), intent(out)    :: free
@@ -6943,7 +6943,6 @@ subroutine frh2o (parameters,isoil,free,tkelv,smc,sh2o,&
 ! ----------------------------------------------------------------------
           if (swl < 0.) swl = 0.
           
-          ! Use do while loop instead of goto statements
           do while ((nlog < 10) .and. (kcount == 0))
              nlog = nlog + 1
              df = log ( ( parameters%psisat(isoil) * grav / hfus ) * ( ( 1. + ck * swl )**2.) * &
