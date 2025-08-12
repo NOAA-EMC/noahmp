@@ -3003,7 +3003,7 @@ endif   ! croptype == 0
     if (ib.eq.1) fsun = 0.
   end do
 
-  if(cosz > 0)
+  if(cosz > 0) then
   ! weight reflectance/transmittance by lai and sai
 
     do ib = 1, nband
@@ -6856,7 +6856,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 !! temperature is below 273.15k (tfrz). requires newton-type iteration
 !! to solve the nonlinear implicit equation given in eqn 17 of koren et al.
 !! (1999, jgr, vol 104(d16),19569-19585)
-  subroutine frh2o (parameters,isoil,free,tkelv,smc,sh2o,&
+subroutine frh2o (parameters,isoil,free,tkelv,smc,sh2o,&
 #ifdef CCPP
      errmsg,errflg)
 #else
@@ -6900,7 +6900,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
     integer, intent(inout)           :: errflg
 #endif
     real (kind=kind_phys)                 :: bx,denom,df,dswl,fk,swl,swlk
-    integer              :: nlog
+    integer              :: nlog,kcount
 !      parameter(ck = 0.0)
     real (kind=kind_phys), parameter      :: ck = 8.0, blim = 5.5, error = 0.005,       &
          dice = 920.0
@@ -6915,7 +6915,10 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 ! ----------------------------------------------------------------------
 ! initializing iterations counter and iterative solution flag.
 ! ----------------------------------------------------------------------
+
     if (parameters%bexp(isoil) >  blim) bx = blim
+    nlog = 0
+
 ! ----------------------------------------------------------------------
 !  if temperature not significantly below freezing (tfrz), sh2o = smc
 ! ----------------------------------------------------------------------
@@ -6923,58 +6926,57 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
     if (tkelv > (tfrz- 1.e-3)) then
        free = smc
     else
+
 ! ----------------------------------------------------------------------
 ! option 1: iterated solution in koren et al, jgr, 1999, eqn 17
 ! ----------------------------------------------------------------------
 ! initial guess for swl (frozen content)
 ! ----------------------------------------------------------------------
-      if (ck /= 0.0) then
-        swl = smc - sh2o
+       if (ck /= 0.0) then
+          swl = smc - sh2o
 ! ----------------------------------------------------------------------
 ! keep within bounds.
 ! ----------------------------------------------------------------------
-        if (swl > (smc -0.02)) swl = smc -0.02
+          if (swl > (smc -0.02)) swl = smc -0.02
 ! ----------------------------------------------------------------------
 !  start of iterations
 ! ----------------------------------------------------------------------
-        if (swl < 0.) swl = 0.
+          if (swl < 0.) swl = 0.
           
-! ----------------------------------------------------------------------
-! if more than 10 iterations, use explicit method (ck=0 approx.)
-! when dswl less or eq. error, no more iterations required.
-! ----------------------------------------------------------------------
-        do nlog = 0,9          
-          df = log ( ( parameters%psisat(isoil) * grav / hfus ) * ( ( 1. + ck * swl )**2.) * &
-               ( parameters%smcmax(isoil) / (smc - swl) )** bx) - log ( - (               &
-               tkelv - tfrz)/ tkelv)
-          denom = 2. * ck / ( 1. + ck * swl ) + bx / ( smc - swl )
-          swlk = swl - df / denom
+          ! Use do while loop instead of goto statements
+          do while ((nlog < 10) .and. (kcount == 0))
+             nlog = nlog + 1
+             df = log ( ( parameters%psisat(isoil) * grav / hfus ) * ( ( 1. + ck * swl )**2.) * &
+                  ( parameters%smcmax(isoil) / (smc - swl) )** bx) - log ( - (               &
+                  tkelv - tfrz)/ tkelv)
+             denom = 2. * ck / ( 1. + ck * swl ) + bx / ( smc - swl )
+             swlk = swl - df / denom
 ! ----------------------------------------------------------------------
 ! bounds useful for mathematical solution.
 ! ----------------------------------------------------------------------
-          if (swlk > (smc -0.02)) swlk = smc - 0.02
-          if (swlk < 0.) swlk = 0.
+             if (swlk > (smc -0.02)) swlk = smc - 0.02
+             if (swlk < 0.) swlk = 0.
 
 ! ----------------------------------------------------------------------
 ! mathematical solution bounds applied.
 ! ----------------------------------------------------------------------
-          dswl = abs (swlk - swl)
-! ----------------------------------------------------------------------            
-! check if dswl less or eq. error, no more iterations required if true
+             dswl = abs (swlk - swl)
+! if more than 10 iterations, use explicit method (ck=0 approx.)
+! when dswl less or eq. error, no more iterations required.
 ! ----------------------------------------------------------------------
-          swl = swlk
-          if ( dswl <= error ) then
-            kcount = kcount+1
-            exit
-          end if
-        end do
+             swl = swlk
+             if ( dswl <= error ) then
+                kcount = kcount + 1
+             end if
 ! ----------------------------------------------------------------------
 !  end of iterations
 ! ----------------------------------------------------------------------
 ! bounds applied within do-block are valid for physical solution.
 ! ----------------------------------------------------------------------
-        free = smc - swl
-      end if
+          end do
+          
+          free = smc - swl
+       end if
 ! ----------------------------------------------------------------------
 ! end option 1
 ! ----------------------------------------------------------------------
