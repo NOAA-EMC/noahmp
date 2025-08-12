@@ -3003,42 +3003,41 @@ endif   ! croptype == 0
     if (ib.eq.1) fsun = 0.
   end do
 
-  if(cosz <= 0) goto 100
+  if(cosz > 0)
+  ! weight reflectance/transmittance by lai and sai
 
-! weight reflectance/transmittance by lai and sai
+    do ib = 1, nband
+      vai = elai + esai
+      wl  = elai / max(vai,mpe)
+      ws  = esai / max(vai,mpe)
+      rho(ib) = max(parameters%rhol(ib)*wl+parameters%rhos(ib)*ws, mpe)
+      tau(ib) = max(parameters%taul(ib)*wl+parameters%taus(ib)*ws, mpe)
+    end do
 
-  do ib = 1, nband
-    vai = elai + esai
-    wl  = elai / max(vai,mpe)
-    ws  = esai / max(vai,mpe)
-    rho(ib) = max(parameters%rhol(ib)*wl+parameters%rhos(ib)*ws, mpe)
-    tau(ib) = max(parameters%taul(ib)*wl+parameters%taus(ib)*ws, mpe)
-  end do
+  ! snow age
 
-! snow age
+    call snow_age (parameters,dt,tg,sneqvo,sneqv,tauss,fage)
 
-   call snow_age (parameters,dt,tg,sneqvo,sneqv,tauss,fage)
+  ! snow albedos: only if cosz > 0 and fsno > 0
 
-! snow albedos: only if cosz > 0 and fsno > 0
+    if(opt_alb == 1) &
+      call snowalb_bats (parameters,nband, fsno,cosz,fage,albsnd,albsni)
+    if(opt_alb == 2) then
+      call snowalb_class (parameters,nband,qsnow,dt,alb,albold,albsnd,albsni,iloc,jloc)
+      albold = alb
+    end if
 
-  if(opt_alb == 1) &
-     call snowalb_bats (parameters,nband, fsno,cosz,fage,albsnd,albsni)
-  if(opt_alb == 2) then
-     call snowalb_class (parameters,nband,qsnow,dt,alb,albold,albsnd,albsni,iloc,jloc)
-     albold = alb
-  end if
+  ! ground surface albedo
 
-! ground surface albedo
+    call groundalb (parameters,nsoil   ,nband   ,ice     ,ist     , & !in
+                    fsno    ,smc     ,albsnd  ,albsni  ,cosz    , & !in
+                    tg      ,iloc    ,jloc    ,                   & !in
+                    albgrd  ,albgri  )                              !out
 
-  call groundalb (parameters,nsoil   ,nband   ,ice     ,ist     , & !in
-                  fsno    ,smc     ,albsnd  ,albsni  ,cosz    , & !in
-                  tg      ,iloc    ,jloc    ,                   & !in
-                  albgrd  ,albgri  )                              !out
+  ! loop over nband wavebands to calculate surface albedos and solar
+  ! fluxes for unit incoming direct (ic=0) and diffuse flux (ic=1)
 
-! loop over nband wavebands to calculate surface albedos and solar
-! fluxes for unit incoming direct (ic=0) and diffuse flux (ic=1)
-
-  do ib = 1, nband
+    do ib = 1, nband
       ic = 0      ! direct
       call twostream (parameters,ib     ,ic      ,vegtyp  ,cosz    ,vai    , & !in
                       fwet   ,tv      ,albgrd  ,albgri  ,rho    , & !in
@@ -3053,22 +3052,21 @@ endif   ! croptype == 0
                       fabi   ,albi    ,ftdi    ,ftii    ,gdir   , & !)   !out
                       frevi  ,fregi   ,bgap    ,wgap)
 
-  end do
+    end do
 
-! sunlit fraction of canopy. set fsun = 0 if fsun < 0.01.
+  ! sunlit fraction of canopy. set fsun = 0 if fsun < 0.01.
 
-  ext = gdir/cosz * sqrt(1.-rho(1)-tau(1))
-  fsun = (1.-exp(-ext*vai)) / max(ext*vai,mpe)
-  ext = fsun
+    ext = gdir/cosz * sqrt(1.-rho(1)-tau(1))
+    fsun = (1.-exp(-ext*vai)) / max(ext*vai,mpe)
+    ext = fsun
 
-  if (ext .lt. 0.01) then
-     wl = 0.
-  else
-     wl = ext 
+    if (ext .lt. 0.01) then
+      wl = 0.
+    else
+      wl = ext 
+    end if
+    fsun = wl
   end if
-  fsun = wl
-
-100 continue
 
   end subroutine albedo
 
@@ -6902,7 +6900,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
     integer, intent(inout)           :: errflg
 #endif
     real (kind=kind_phys)                 :: bx,denom,df,dswl,fk,swl,swlk
-    integer              :: nlog,kcount
+    integer              :: nlog
 !      parameter(ck = 0.0)
     real (kind=kind_phys), parameter      :: ck = 8.0, blim = 5.5, error = 0.005,       &
          dice = 920.0
@@ -6917,10 +6915,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 ! ----------------------------------------------------------------------
 ! initializing iterations counter and iterative solution flag.
 ! ----------------------------------------------------------------------
-
     if (parameters%bexp(isoil) >  blim) bx = blim
-    nlog = 0
-
 ! ----------------------------------------------------------------------
 !  if temperature not significantly below freezing (tfrz), sh2o = smc
 ! ----------------------------------------------------------------------
@@ -6928,25 +6923,27 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
     if (tkelv > (tfrz- 1.e-3)) then
        free = smc
     else
-
 ! ----------------------------------------------------------------------
 ! option 1: iterated solution in koren et al, jgr, 1999, eqn 17
 ! ----------------------------------------------------------------------
 ! initial guess for swl (frozen content)
 ! ----------------------------------------------------------------------
-       if (ck /= 0.0) then
-          swl = smc - sh2o
+      if (ck /= 0.0) then
+        swl = smc - sh2o
 ! ----------------------------------------------------------------------
 ! keep within bounds.
 ! ----------------------------------------------------------------------
-          if (swl > (smc -0.02)) swl = smc -0.02
+        if (swl > (smc -0.02)) swl = smc -0.02
 ! ----------------------------------------------------------------------
 !  start of iterations
 ! ----------------------------------------------------------------------
-          if (swl < 0.) swl = 0.
-1001      continue
-          if (.not.( (nlog < 10) .and. (kcount == 0)))   goto 1002
-          nlog = nlog +1
+        if (swl < 0.) swl = 0.
+          
+! ----------------------------------------------------------------------
+! if more than 10 iterations, use explicit method (ck=0 approx.)
+! when dswl less or eq. error, no more iterations required.
+! ----------------------------------------------------------------------
+        do nlog = 0,9          
           df = log ( ( parameters%psisat(isoil) * grav / hfus ) * ( ( 1. + ck * swl )**2.) * &
                ( parameters%smcmax(isoil) / (smc - swl) )** bx) - log ( - (               &
                tkelv - tfrz)/ tkelv)
@@ -6962,22 +6959,22 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 ! mathematical solution bounds applied.
 ! ----------------------------------------------------------------------
           dswl = abs (swlk - swl)
-! if more than 10 iterations, use explicit method (ck=0 approx.)
-! when dswl less or eq. error, no more iterations required.
+! ----------------------------------------------------------------------            
+! check if dswl less or eq. error, no more iterations required if true
 ! ----------------------------------------------------------------------
           swl = swlk
           if ( dswl <= error ) then
-             kcount = kcount +1
+            kcount = kcount+1
+            exit
           end if
+        end do
 ! ----------------------------------------------------------------------
 !  end of iterations
 ! ----------------------------------------------------------------------
 ! bounds applied within do-block are valid for physical solution.
 ! ----------------------------------------------------------------------
-          goto 1001
-1002      continue
-          free = smc - swl
-       end if
+        free = smc - swl
+      end if
 ! ----------------------------------------------------------------------
 ! end option 1
 ! ----------------------------------------------------------------------
