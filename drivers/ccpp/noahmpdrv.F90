@@ -365,8 +365,8 @@ subroutine noahmpdrv_timestep_init (itime, fhour, delt, km,  ncols,         &
 
     deallocate(stc_updated, slc_updated)
     deallocate(mask_tile)
-  
-    write(*,'(a,i4,a,i8)') 'noahmpdrv_timestep_init rank ', Land_IAU_Control%me, ' # of cells with stc update ', nstcupd
+    ! Remove non-warning/error log write
+    !write(*,'(a,i4,a,i8)') 'noahmpdrv_timestep_init rank ', Land_IAU_Control%me, ' # of cells with stc update ', nstcupd
 
 
 end subroutine noahmpdrv_timestep_init

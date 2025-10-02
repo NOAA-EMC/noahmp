@@ -3003,42 +3003,41 @@ endif   ! croptype == 0
     if (ib.eq.1) fsun = 0.
   end do
 
-  if(cosz <= 0) goto 100
+  if(cosz > 0) then
+  ! weight reflectance/transmittance by lai and sai
 
-! weight reflectance/transmittance by lai and sai
+    do ib = 1, nband
+      vai = elai + esai
+      wl  = elai / max(vai,mpe)
+      ws  = esai / max(vai,mpe)
+      rho(ib) = max(parameters%rhol(ib)*wl+parameters%rhos(ib)*ws, mpe)
+      tau(ib) = max(parameters%taul(ib)*wl+parameters%taus(ib)*ws, mpe)
+    end do
 
-  do ib = 1, nband
-    vai = elai + esai
-    wl  = elai / max(vai,mpe)
-    ws  = esai / max(vai,mpe)
-    rho(ib) = max(parameters%rhol(ib)*wl+parameters%rhos(ib)*ws, mpe)
-    tau(ib) = max(parameters%taul(ib)*wl+parameters%taus(ib)*ws, mpe)
-  end do
+  ! snow age
 
-! snow age
+    call snow_age (parameters,dt,tg,sneqvo,sneqv,tauss,fage)
 
-   call snow_age (parameters,dt,tg,sneqvo,sneqv,tauss,fage)
+  ! snow albedos: only if cosz > 0 and fsno > 0
 
-! snow albedos: only if cosz > 0 and fsno > 0
+    if(opt_alb == 1) &
+      call snowalb_bats (parameters,nband, fsno,cosz,fage,albsnd,albsni)
+    if(opt_alb == 2) then
+      call snowalb_class (parameters,nband,qsnow,dt,alb,albold,albsnd,albsni,iloc,jloc)
+      albold = alb
+    end if
 
-  if(opt_alb == 1) &
-     call snowalb_bats (parameters,nband, fsno,cosz,fage,albsnd,albsni)
-  if(opt_alb == 2) then
-     call snowalb_class (parameters,nband,qsnow,dt,alb,albold,albsnd,albsni,iloc,jloc)
-     albold = alb
-  end if
+  ! ground surface albedo
 
-! ground surface albedo
+    call groundalb (parameters,nsoil   ,nband   ,ice     ,ist     , & !in
+                    fsno    ,smc     ,albsnd  ,albsni  ,cosz    , & !in
+                    tg      ,iloc    ,jloc    ,                   & !in
+                    albgrd  ,albgri  )                              !out
 
-  call groundalb (parameters,nsoil   ,nband   ,ice     ,ist     , & !in
-                  fsno    ,smc     ,albsnd  ,albsni  ,cosz    , & !in
-                  tg      ,iloc    ,jloc    ,                   & !in
-                  albgrd  ,albgri  )                              !out
+  ! loop over nband wavebands to calculate surface albedos and solar
+  ! fluxes for unit incoming direct (ic=0) and diffuse flux (ic=1)
 
-! loop over nband wavebands to calculate surface albedos and solar
-! fluxes for unit incoming direct (ic=0) and diffuse flux (ic=1)
-
-  do ib = 1, nband
+    do ib = 1, nband
       ic = 0      ! direct
       call twostream (parameters,ib     ,ic      ,vegtyp  ,cosz    ,vai    , & !in
                       fwet   ,tv      ,albgrd  ,albgri  ,rho    , & !in
@@ -3053,22 +3052,21 @@ endif   ! croptype == 0
                       fabi   ,albi    ,ftdi    ,ftii    ,gdir   , & !)   !out
                       frevi  ,fregi   ,bgap    ,wgap)
 
-  end do
+    end do
 
-! sunlit fraction of canopy. set fsun = 0 if fsun < 0.01.
+  ! sunlit fraction of canopy. set fsun = 0 if fsun < 0.01.
 
-  ext = gdir/cosz * sqrt(1.-rho(1)-tau(1))
-  fsun = (1.-exp(-ext*vai)) / max(ext*vai,mpe)
-  ext = fsun
+    ext = gdir/cosz * sqrt(1.-rho(1)-tau(1))
+    fsun = (1.-exp(-ext*vai)) / max(ext*vai,mpe)
+    ext = fsun
 
-  if (ext .lt. 0.01) then
-     wl = 0.
-  else
-     wl = ext 
+    if (ext .lt. 0.01) then
+      wl = 0.
+    else
+      wl = ext 
+    end if
+    fsun = wl
   end if
-  fsun = wl
-
-100 continue
 
   end subroutine albedo
 
@@ -6893,7 +6891,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 !   free..........supercooled liquid water content [m3/m3]
 ! ----------------------------------------------------------------------
     implicit none
-  type (noahmp_parameters), intent(in) :: parameters
+    type (noahmp_parameters), intent(in) :: parameters
     integer,intent(in)   :: isoil
     real (kind=kind_phys), intent(in)     :: sh2o,smc,tkelv
     real (kind=kind_phys), intent(out)    :: free
@@ -6944,38 +6942,38 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 !  start of iterations
 ! ----------------------------------------------------------------------
           if (swl < 0.) swl = 0.
-1001      continue
-          if (.not.( (nlog < 10) .and. (kcount == 0)))   goto 1002
-          nlog = nlog +1
-          df = log ( ( parameters%psisat(isoil) * grav / hfus ) * ( ( 1. + ck * swl )**2.) * &
-               ( parameters%smcmax(isoil) / (smc - swl) )** bx) - log ( - (               &
-               tkelv - tfrz)/ tkelv)
-          denom = 2. * ck / ( 1. + ck * swl ) + bx / ( smc - swl )
-          swlk = swl - df / denom
+          
+          do while ((nlog < 10) .and. (kcount == 0))
+             nlog = nlog + 1
+             df = log ( ( parameters%psisat(isoil) * grav / hfus ) * ( ( 1. + ck * swl )**2.) * &
+                  ( parameters%smcmax(isoil) / (smc - swl) )** bx) - log ( - (               &
+                  tkelv - tfrz)/ tkelv)
+             denom = 2. * ck / ( 1. + ck * swl ) + bx / ( smc - swl )
+             swlk = swl - df / denom
 ! ----------------------------------------------------------------------
 ! bounds useful for mathematical solution.
 ! ----------------------------------------------------------------------
-          if (swlk > (smc -0.02)) swlk = smc - 0.02
-          if (swlk < 0.) swlk = 0.
+             if (swlk > (smc -0.02)) swlk = smc - 0.02
+             if (swlk < 0.) swlk = 0.
 
 ! ----------------------------------------------------------------------
 ! mathematical solution bounds applied.
 ! ----------------------------------------------------------------------
-          dswl = abs (swlk - swl)
+             dswl = abs (swlk - swl)
 ! if more than 10 iterations, use explicit method (ck=0 approx.)
 ! when dswl less or eq. error, no more iterations required.
 ! ----------------------------------------------------------------------
-          swl = swlk
-          if ( dswl <= error ) then
-             kcount = kcount +1
-          end if
+             swl = swlk
+             if ( dswl <= error ) then
+                kcount = kcount + 1
+             end if
 ! ----------------------------------------------------------------------
 !  end of iterations
 ! ----------------------------------------------------------------------
 ! bounds applied within do-block are valid for physical solution.
 ! ----------------------------------------------------------------------
-          goto 1001
-1002      continue
+          end do
+          
           free = smc - swl
        end if
 ! ----------------------------------------------------------------------
