@@ -308,8 +308,6 @@ subroutine noahmpdrv_timestep_init (itime, fhour, delt, km,  ncols,         &
     endif ! if soil/snow point
   enddo ij_loop
 
-  deallocate(stc_inc_flat, slc_inc_flat) 
-
  !!do moisture/temperature adjustment for consistency after increment add 
   call read_mp_table_parameters(errmsg, errflg)          
   if (errflg .ne. 0) then
@@ -367,7 +365,7 @@ subroutine noahmpdrv_timestep_init (itime, fhour, delt, km,  ncols,         &
     endif
   endif
 
-    deallocate(stc_updated, slc_updated)
+    deallocate(stc_inc_flat, slc_inc_flat, stc_updated, slc_updated)
     deallocate(mask_tile)
     ! Remove non-warning/error log write
     !write(*,'(a,i4,a,i8)') 'noahmpdrv_timestep_init rank ', Land_IAU_Control%me, ' # of cells with stc update ', nstcupd
