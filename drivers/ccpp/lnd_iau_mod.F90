@@ -81,7 +81,8 @@ module land_iau_mod
       logical              :: upd_slc
       logical              :: do_stcsmc_adjustment  !do moisture/temperature adjustment for consistency after increment add
       real(kind=kind_phys) :: min_T_increment
- 
+      real(kind=kind_phys) :: min_SLC_increment
+
       integer              :: me              !< MPI rank designator
       integer              :: mpi_root        !< MPI rank of master atmosphere processor
       character(len=64)    :: fn_nml          !< namelist filename for surface data cycling
@@ -97,13 +98,13 @@ module land_iau_mod
 
 contains
 
-subroutine land_iau_mod_set_control(Land_IAU_Control,fn_nml,input_nml_file_i, me, mpi_root, &
+subroutine land_iau_mod_set_control(Land_IAU_Control,fn_nml,input_nml_file, me, mpi_root, &
                                    isc, jsc, nx, ny, tile_num, nblks, blksz, &
                                    lsoil, lsnow_lsm, dtp, fhour, errmsg, errflg)          
 
    type (land_iau_control_type), intent(inout) :: Land_IAU_Control
    character(*), intent(in)                    :: fn_nml               !< namelist filename for surface data cycling
-   character(len=:), intent(in), dimension(:), pointer :: input_nml_file_i
+   character(len=:), intent(in), dimension(:), pointer :: input_nml_file
    integer, intent(in)                        :: me, mpi_root          !< MPI rank of master atmosphere processor   
    integer, intent(in)                        :: isc, jsc, nx, ny, tile_num, nblks, lsoil, lsnow_lsm
    integer, dimension(:),          intent(in) :: blksz                 !(one:) !GFS_Control%blksz
@@ -118,7 +119,6 @@ subroutine land_iau_mod_set_control(Land_IAU_Control,fn_nml,input_nml_file_i, me
    logical                                    :: exists
    character(len=512)                         :: ioerrmsg
 
-   character(len=:), pointer, dimension(:)    :: input_nml_file => null()
    character(len=4)                           :: iosstr
 
    !> land iau setting read from namelist
@@ -133,21 +133,17 @@ subroutine land_iau_mod_set_control(Land_IAU_Control,fn_nml,input_nml_file_i, me
    logical               :: land_iau_upd_slc = .false.
    logical               :: land_iau_do_stcsmc_adjustment = .false.
    real(kind=kind_phys)  :: land_iau_min_T_increment = 0.0001
-  
+   real(kind=kind_phys)  :: land_iau_min_SLC_increment = 0.000001
+
    NAMELIST /land_iau_nml/ do_land_iau, land_iau_delthrs, land_iau_inc_files, land_iau_fhrs,   &  
-                        land_iau_filter_increments, &  
-                        lsoil_incr, land_iau_upd_stc, land_iau_upd_slc, land_iau_do_stcsmc_adjustment, land_iau_min_T_increment                                    
-   
+                        land_iau_filter_increments, lsoil_incr, land_iau_upd_stc, land_iau_upd_slc, &
+                        land_iau_do_stcsmc_adjustment, land_iau_min_T_increment, land_iau_min_SLC_increment                               
    !Errors messages handled through CCPP error handling variables
    errmsg = ''
    errflg = 0
 
 !3.11.24: copied from GFS_typedefs.F90 
 #ifdef INTERNAL_FILE_NML
-    ! allocate required to work around GNU compiler bug 100886
-    ! https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100886
-    allocate(input_nml_file, mold=input_nml_file_i)
-    input_nml_file => input_nml_file_i
     read(input_nml_file, nml=land_iau_nml, ERR=888, END=999, iostat=ios)
 #else
    inquire (file=trim(fn_nml), exist=exists)    ! TODO: this maybe be replaced by nlunit passed from ccpp
@@ -214,6 +210,7 @@ subroutine land_iau_mod_set_control(Land_IAU_Control,fn_nml,input_nml_file_i, me
    Land_IAU_Control%upd_slc = land_iau_upd_slc
    Land_IAU_Control%do_stcsmc_adjustment = land_iau_do_stcsmc_adjustment
    Land_IAU_Control%min_T_increment = land_iau_min_T_increment
+   Land_IAU_Control%min_SLC_increment = land_iau_min_SLC_increment
 
    allocate(Land_IAU_Control%blksz(nblks))
    allocate(Land_IAU_Control%blk_strt_indx(nblks))
@@ -627,6 +624,7 @@ subroutine read_iau_forcing_fv3(Land_IAU_Control, wk3_stc, wk3_slc, errmsg, errf
    
    !set too small increments to zero
    where(abs(wk3_stc) < Land_IAU_Control%min_T_increment) wk3_stc = 0.0
+   where(abs(wk3_slc) < Land_IAU_Control%min_SLC_increment) wk3_slc = 0.0
 
    status =nf90_close(ncid) 
    call netcdf_err(status, 'closing file '//trim(fname), errflg, errmsg) 
