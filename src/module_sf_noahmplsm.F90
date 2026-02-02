@@ -15,6 +15,7 @@ use machine ,   only : kind_phys
   public  :: noahmp_sflx
   public  :: sfcdif4
   public  :: psi_init
+  public  :: blowing_snow
 
 
   private :: atm
@@ -174,6 +175,10 @@ use machine ,   only : kind_phys
   integer :: opt_z0m  !< options for momentum roughness length
                       ! **1 -> use z0m from MPTABLE
                       !   2 -> z0m = f(canopy height, LAI/SAI) 
+
+  integer :: opt_bsn  !< options for blowing snow sublimation
+                      !   0 -> off
+                      !   1 -> on (Dery and Yau, 1999)
 
 !------------------------------------------------------------------------------------------!
 ! physical constants:                                                                      !
@@ -728,6 +733,7 @@ contains
   real (kind=kind_phys)                                           :: snowhin !< snow depth increasing rate (m/s)
   real (kind=kind_phys)                                 :: latheav !< latent heat vap./sublimation (j/kg)
   real (kind=kind_phys)                                 :: latheag !< latent heat vap./sublimation (j/kg)
+  real (kind=kind_phys)                                 :: qbsub   !< blowing snow sublimation rate (mm/s)
   logical                             :: frozen_ground !< used to define latent heat pathway
   logical                             :: frozen_canopy !< used to define latent heat pathway
   logical                             :: dveg_active !< flag to run dynamic vegetation
@@ -856,6 +862,11 @@ contains
                  emissi ,pah    ,canhs,                           &
 		     shg,shc,shb,evg,evb,ghv,ghb,irg,irc,irb,tr,evc,chleaf,chuc,chv2,chb2 )                                            !out
 
+    qbsub = 0.0
+    if (opt_bsn == 1) then
+       call blowing_snow (sfctmp, sfcprs, uu, vv, qair, ustarx, sneqv, dt, ep_2, qbsub)
+    end if
+
     qsfcveg  = eah*ep_2/(sfcprs + epsm1*eah)
     qsfcbare = qsfc
     qsfc     = q1
@@ -884,7 +895,7 @@ contains
                  smcwtd ,deeprech,rech                          , & !inout
                  cmc    ,ecan   ,etran  ,fwet   ,runsrf ,runsub , & !out
                  qin    ,qdis   ,ponding1       ,ponding2,&
-                 qsnbot ,esnow   )  !out
+                 qsnbot ,esnow  ,qbsub )  !out
 
 !     write(*,'(a20,10f15.5)') 'sflx:runoff=',runsrf*dt,runsub*dt,edir*dt
 
@@ -935,8 +946,13 @@ contains
      if (errflg /= 0) return
 #endif
 
+    if (opt_bsn == 1) then
+       fgev = fgev + qbsub * hsub
+       fsh  = fsh  - qbsub * hsub
+    end if
+
 ! urban - jref
-    qfx = etran + ecan + edir
+    qfx = etran + ecan + edir + qbsub
     if ( parameters%urban_flag ) then
        qsfc = qfx/(rhoair*ch) + qair
        q2b = qsfc
@@ -7023,7 +7039,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
                     smcwtd ,deeprech,rech                          , & !inout
                     cmc    ,ecan   ,etran  ,fwet   ,runsrf ,runsub , & !out
                     qin    ,qdis   ,ponding1       ,ponding2,        &
-                    qsnbot ,esnow) 
+                 qsnbot ,esnow  ,qbsub )  !out
 ! ----------------------------------------------------------------------  
 ! code history:
 ! initial code: guo-yue niu, oct. 2007
@@ -7164,7 +7180,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
           &          qrain  ,ficeold,iloc   ,jloc   ,         & !in
           &          isnow  ,snowh  ,sneqv  ,snice  ,snliq  , & !inout
           &          sh2o   ,sice   ,stc    ,zsnso  ,dzsnso , & !inout
-          &          qsnbot ,snoflow,ponding1       ,ponding2)  !out
+          &          qsnbot ,snoflow,ponding1       ,ponding2, qbsub )  !out
 
    if(frozen_ground) then
       sice(1) =  sice(1) + (qsdew-qseva)*dt/(dzsnso(1)*1000.)
@@ -7383,7 +7399,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
                         qrain  ,ficeold,iloc   ,jloc   ,         & !in
                         isnow  ,snowh  ,sneqv  ,snice  ,snliq  , & !inout
                         sh2o   ,sice   ,stc    ,zsnso  ,dzsnso , & !inout
-                        qsnbot ,snoflow,ponding1       ,ponding2)  !out
+                        qsnbot ,snoflow,ponding1       ,ponding2, qbsub)  !out
 ! ----------------------------------------------------------------------
   implicit none
 ! ----------------------------------------------------------------------
@@ -7419,6 +7435,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 ! output
   real (kind=kind_phys),                              intent(out) :: qsnbot !< melting water out of snow bottom [mm/s]
   real (kind=kind_phys),                              intent(out) :: snoflow!< glacier flow [mm]
+  real (kind=kind_phys),                            intent(in)    :: qbsub  !< blowing snow sublimation [mm/s]
   real (kind=kind_phys),                              intent(out) :: ponding1 !<
   real (kind=kind_phys),                              intent(out) :: ponding2 !<
 
@@ -7456,7 +7473,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
                   qrain  ,iloc   ,jloc   ,                 & !in
                   isnow  ,dzsnso ,snowh  ,sneqv  ,snice  , & !inout
                   snliq  ,sh2o   ,sice   ,stc    ,         & !inout
-                  qsnbot ,ponding1       ,ponding2)           !out
+                  qsnbot ,ponding1       ,ponding2, qbsub)    !out
 
 !set empty snow layers to zero
 
@@ -8077,7 +8094,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
                       qrain  ,iloc   ,jloc   ,                 & !in
                       isnow  ,dzsnso ,snowh  ,sneqv  ,snice  , & !inout
                       snliq  ,sh2o   ,sice   ,stc    ,         & !inout
-                      qsnbot ,ponding1       ,ponding2)          !out
+                      qsnbot ,ponding1       ,ponding2, qbsub)    !out
 ! ----------------------------------------------------------------------
 ! renew the mass of ice lens (snice) and liquid (snliq) of the
 ! surface snow layer resulting from sublimation (frost) / evaporation (dew)
@@ -8143,7 +8160,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 
    if(isnow == 0 .and. sneqv > 0.) then
       temp   = sneqv
-      sneqv  = sneqv - qsnsub*dt + qsnfro*dt
+      sneqv  = sneqv - (qsnsub + qbsub)*dt + qsnfro*dt
       propor = sneqv/temp
       snowh  = max(0.,propor * snowh)
       snowh  = min(max(snowh,sneqv/500.0),sneqv/50.0)  ! limit adjustment to a reasonable density
@@ -8168,7 +8185,7 @@ zolmax = xkrefsqr / sqrt(xkzo)   ! maximum z/L
 
    if ( isnow < 0 ) then !kwm added this if statement to prevent out-of-bounds array references
 
-      wgdif = snice(isnow+1) - qsnsub*dt + qsnfro*dt
+      wgdif = snice(isnow+1) - (qsnsub + qbsub)*dt + qsnfro*dt
       snice(isnow+1) = wgdif
       if (wgdif < 1.e-6 .and. isnow <0) then
          call  combine (parameters,nsnow  ,nsoil  ,iloc, jloc   , & !in
@@ -10426,7 +10443,7 @@ end subroutine psn_crop
   subroutine noahmp_options(idveg    , iopt_crs , iopt_btr , iopt_run , iopt_sfc , iopt_frz , & 
                              iopt_inf, iopt_rad , iopt_alb , iopt_snf , iopt_tbot, iopt_stc , &
 			     iopt_rsf, iopt_soil, iopt_pedo, iopt_crop, iopt_trs , iopt_diag, &
-                             iopt_z0m )
+                             iopt_z0m, iopt_bsn )
 
   implicit none
 
@@ -10451,6 +10468,7 @@ end subroutine psn_crop
   integer,  intent(in) :: iopt_trs  !< thermal roughness scheme option (1->z0h=z0; 2->rb reversed)
   integer,  intent(in) :: iopt_diag !< surface 2m t/q diagnostic approach 
   integer,  intent(in) :: iopt_z0m  !< momentum roughness length option
+  integer,  intent(in), optional :: iopt_bsn  !< blowing snow sublimation option
 
 ! -------------------------------------------------------------------------------------------------
 
@@ -10474,6 +10492,8 @@ end subroutine psn_crop
   opt_trs  = iopt_trs
   opt_diag = iopt_diag
   opt_z0m  = iopt_z0m
+  opt_bsn  = 0
+  if (present(iopt_bsn)) opt_bsn = iopt_bsn
   
   end subroutine noahmp_options
 
@@ -11692,6 +11712,107 @@ end subroutine psn_crop
 
       return
    end function
+
+!========================================================================
+  subroutine blowing_snow (sfctmp, sfcprs, uu, vv, qair, ustar, sneqv, dt, ep_2, qbsub)
+! ----------------------------------------------------------------------
+!  Blowing snow sublimation formulation following Dery and Yau (1999)
+!    "A Bulk Blowing Snow Model", Boundary-Layer Meteorology
+! ----------------------------------------------------------------------
+    implicit none
+
+    real(kind=kind_phys), intent(in)  :: sfctmp   ! air temperature (K)
+    real(kind=kind_phys), intent(in)  :: sfcprs   ! surface pressure (Pa)
+    real(kind=kind_phys), intent(in)  :: uu, vv   ! wind components (m/s)
+    real(kind=kind_phys), intent(in)  :: qair     ! specific humidity (kg/kg)
+    real(kind=kind_phys), intent(in)  :: ustar    ! friction velocity (m/s)
+    real(kind=kind_phys), intent(in)  :: sneqv    ! snow water equivalent (mm)
+    real(kind=kind_phys), intent(in)  :: dt       ! time step (s)
+    real(kind=kind_phys), intent(in)  :: ep_2     ! ratio of gas constants
+    real(kind=kind_phys), intent(out) :: qbsub    ! blowing snow sublimation rate (mm/s)
+
+    real(kind=kind_phys) :: u10, ta, ut, ustar_t, qbsalt
+    real(kind=kind_phys) :: esw, esi, desw, desi, qis, s_minus_1
+    real(kind=kind_phys) :: fk, fd, tau_sub, nu, re, rm, vb, alpha
+    real(kind=kind_phys) :: rhoair, ka, dv, rm2
+
+    ! Constants from Dery and Yau (1999) or standard values
+    real(kind=kind_phys), parameter :: ut0 = 6.975      ! minimum threshold wind speed (m/s)
+    real(kind=kind_phys), parameter :: vb0 = 0.5        ! terminal velocity (m/s)
+    real(kind=kind_phys), parameter :: rm0 = 100.e-6    ! mean radius (m)
+    real(kind=kind_phys), parameter :: zs  = 0.1        ! saltation layer height (m)
+    real(kind=kind_phys), parameter :: ka0 = 0.024      ! thermal conductivity of air (W/m/K)
+    real(kind=kind_phys), parameter :: dv0 = 2.25e-5    ! diffusivity of water vapor (m2/s)
+    real(kind=kind_phys), parameter :: nu0 = 1.53e-5    ! kinematic viscosity of air (m2/s)
+
+    qbsub = 0.0
+    if (sneqv <= 0.0 .or. ustar <= 0.001) return
+
+    u10 = max(sqrt(uu**2 + vv**2), 0.1_kind_phys)
+    ta = sfctmp - tfrz  ! Temperature in Celsius
+
+    ! Equation (25): Threshold 10-m wind speed
+    ut = ut0 + 0.0033 * (ta + 27.27)**2
+
+    if (u10 > ut) then
+        ! Equation (24): Saltation mixing ratio
+        qbsalt = 0.385 * (1.0 - ut/u10)**2.59 / ustar
+        qbsalt = max(qbsalt, 0.0_kind_phys)
+
+        ! Thermodynamics
+        call esat(ta, esw, esi, desw, desi)
+        qis = ep_2 * esi / (sfcprs - (1.0-ep_2)*esi)
+        s_minus_1 = qair/qis - 1.0
+
+        if (s_minus_1 < 0.0) then
+            rhoair = sfcprs / (rair * sfctmp * (1.0 + 0.61*qair))
+            rm = rm0
+            rm2 = rm**2
+            vb = vb0
+            ka = ka0
+            dv = dv0
+
+            ! Nusselt number (Equation 21, 22)
+            re = 2.0 * rm * vb / nu0
+            nu = 1.79 + 0.606 * sqrt(re)
+
+            ! Thermodynamic terms (Equation 17 reference)
+            fk = hsub**2 / (ka * rw * sfctmp**2)
+            fd = 1.0 / (rhoair * qis * dv)
+
+            ! Sublimation time scale (Equation 19)
+            ! Sb = qb / tau_sub
+            ! 1/tau_sub = Nu * (S-1) / (2 * rho_ice * rm**2 * (Fk + Fd))
+            tau_sub = (2.0 * denice * rm2 * (fk + fd)) / (nu * abs(s_minus_1))
+
+            ! Steady-state column integral
+            ! alpha = vb / (vkc * ustar)
+            alpha = vb / (vkc * ustar)
+
+            if (abs(alpha - 1.0) < 0.01) alpha = 1.01
+
+            if (alpha > 1.0) then
+                ! Qs = integral from zs to infinity of (qb(z)/tau_sub) dz
+                ! Qs = qbsalt * zs / (alpha - 1) / tau_sub
+                qbsub = qbsalt * zs / (alpha - 1.0) / tau_sub
+            else
+                ! For alpha <= 1, use a finite depth (e.g., 1000 m)
+                ! Qs = qbsalt * zs / (1 - alpha) * ((ztop/zs)**(1-alpha) - 1) / tau_sub
+                qbsub = (qbsalt * zs / (1.0 - alpha)) * ((1000.0/zs)**(1.0-alpha) - 1.0) / tau_sub
+            end if
+
+            ! Convert from mixing ratio rate to mass rate (kg/m2/s)
+            ! Mixing ratio qb = mass_snow / mass_air.
+            ! So sublimation mass flux = rho_air * integral Sb dz
+            qbsub = qbsub * rhoair
+
+            ! Limit sublimation by available snow
+            qbsub = min(qbsub, sneqv/dt)
+        end if
+    end if
+
+  end subroutine blowing_snow
+
 !========================================================================
 end module module_sf_noahmplsm
 

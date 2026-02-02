@@ -7,7 +7,7 @@ module noahmp_glacier_globals
 
   use machine ,   only : kind_phys
   use sfc_diff, only   : stability
-  use module_sf_noahmplsm, only : sfcdif4
+  use module_sf_noahmplsm, only : sfcdif4, blowing_snow
 
   implicit none
 
@@ -64,6 +64,7 @@ module noahmp_glacier_globals
 
   INTEGER :: OPT_SFC != 1    !(suggested 1)
   INTEGER :: OPT_TRS != 1    !(suggested 2)
+  INTEGER :: OPT_BSN != 0    !(0: off, 1: Dery and Yau 1999)
 
 ! adjustable parameters for snow processes
 
@@ -137,7 +138,7 @@ contains
                    emissi    ,fpice   ,ch2b     , esnow   , albsnd , albsni   , &
                    errmsg    ,errflg) 
 #else
-                   emissi    ,fpice   ,ch2b     , esnow.  , albsnd , albsni) 
+                   emissi    ,fpice   ,ch2b     , esnow  , albsnd , albsni)
 #endif
                    
 
@@ -259,6 +260,7 @@ contains
   real (kind=kind_phys)                                           :: qvap   !< ground surface evap. rate [mm/s]
   real (kind=kind_phys)                                           :: lathea !< latent heat [j/kg]
   real (kind=kind_phys)                                           :: qmelt  !< internal pack melt
+  real (kind=kind_phys)                                 :: qbsub  !< blowing snow sublimation rate [mm/s]
   real (kind=kind_phys)                                           :: swdown !< downward solar [w/m2]
   real (kind=kind_phys)                                           :: beg_wb !< beginning water for error check
   real (kind=kind_phys)                                           :: zbot = -8.0 
@@ -304,6 +306,13 @@ contains
                          trad      ,t2m     ,ssoil   ,lathea  ,q2e     ,emissi  , & !out
                          ch2b      ,albsnd  ,albsni  ,z0h_total)                    !out
 
+    qbsub = 0.0
+    if (opt_bsn == 1) then
+       call blowing_snow (sfctmp, sfcprs, uu, vv, qair, sqrt(cm)*ur, sneqv, dt, ep_2, qbsub) ! sqrt(cm)*ur is ustar
+       fgev = fgev + qbsub * hsub
+       fsh  = fsh  - qbsub * hsub
+    end if
+
 #ifdef CCPP
     if (errflg /= 0) return
 #endif
@@ -322,7 +331,7 @@ contains
                          isnow  ,snowh  ,sneqv   ,snice    ,snliq    ,stc    , & !inout
                          dzsnso ,sh2o   ,sice    ,ponding  ,zsnso    ,fsh    , & !inout
                          runsrf ,runsub ,qsnow   ,ponding1 ,ponding2 ,qsnbot , & !out
-			 fpice  ,esnow)                                          !out
+			 fpice  ,esnow  ,qbsub)                                  !out
 
      if(opt_gla == 2) then
        edir = qvap - qdew
@@ -2396,7 +2405,7 @@ end if   ! opt_gla == 1
                             isnow  ,snowh  ,sneqv   ,snice    ,snliq    ,stc    , & !inout
                             dzsnso ,sh2o   ,sice    ,ponding  ,zsnso    ,fsh    , & !inout
                             runsrf ,runsub ,qsnow   ,ponding1 ,ponding2 ,qsnbot , & !out
-			    fpice  ,esnow)                                          !out
+			    fpice  ,esnow  ,qbsub)                                  !out
 ! ----------------------------------------------------------------------  
 ! code history:
 ! initial code: guo-yue niu, oct. 2007
@@ -2438,6 +2447,7 @@ end if   ! opt_gla == 1
   real (kind=kind_phys),                            intent(out)   :: qsnbot  !< melting water out of snow bottom [mm/s]
   real (kind=kind_phys),                            intent(out)   :: fpice   !< precipitation frozen fraction
   real (kind=kind_phys),                            intent(out)   :: esnow   !< 
+  real (kind=kind_phys),                            intent(in)    :: qbsub   !< blowing snow sublimation [mm/s]
 
 ! local
   real (kind=kind_phys)                                           :: qrain   !< rain at ground srf (mm) [+]
@@ -2521,7 +2531,7 @@ end if   ! opt_gla == 1
                              isnow   ,snowh   ,sneqv    ,snice  ,snliq  , & !inout
                              sh2o    ,sice    ,stc      ,dzsnso ,zsnso  , & !inout
                              fsh     ,                                    & !inout
-                             qsnbot  ,snoflow ,ponding1 ,ponding2)          !out
+                             qsnbot  ,snoflow ,ponding1 ,ponding2, qbsub)   !out
 
     !ponding: melting water from snow when there is no layer
     
@@ -2568,7 +2578,7 @@ end if   ! opt_gla == 1
                                 isnow   ,snowh   ,sneqv    ,snice  ,snliq  , & !inout
                                 sh2o    ,sice    ,stc      ,dzsnso ,zsnso  , & !inout
 				fsh     ,                                    & !inout
-                                qsnbot  ,snoflow ,ponding1 ,ponding2)          !out
+                                qsnbot  ,snoflow ,ponding1 ,ponding2, qbsub)   !out
 ! ----------------------------------------------------------------------
   implicit none
 ! ----------------------------------------------------------------------
@@ -2602,6 +2612,7 @@ end if   ! opt_gla == 1
 ! output
   real (kind=kind_phys),                              intent(out) :: qsnbot !< melting water out of snow bottom [mm/s]
   real (kind=kind_phys),                              intent(out) :: snoflow!< glacier flow [mm]
+  real (kind=kind_phys),                            intent(in)    :: qbsub  !< blowing snow sublimation [mm/s]
   real (kind=kind_phys),                              intent(out) :: ponding1 !<
   real (kind=kind_phys),                              intent(out) :: ponding2 !<
 
@@ -2648,7 +2659,7 @@ end if   ! opt_gla == 1
                           isnow    ,dzsnso   ,snowh  ,sneqv  ,snice  , & !inout
                           snliq    ,sh2o     ,sice   ,stc    ,         & !inout
 			  ponding1 ,ponding2 ,fsh    ,                 & !inout
-                          qsnbot )                                       !out
+                          qsnbot , qbsub )                               !out
 
 !to obtain equilibrium state of snow in glacier region
        
@@ -3217,7 +3228,7 @@ end if   ! opt_gla == 1
                               isnow    ,dzsnso   ,snowh  ,sneqv  ,snice  , & !inout
                               snliq    ,sh2o     ,sice   ,stc    ,         & !inout
                               ponding1 ,ponding2 ,fsh    ,                 & !inout
-                              qsnbot )                                       !out
+                              qsnbot , qbsub )                               !out
 ! ----------------------------------------------------------------------
 !> renew the mass of ice lens (snice) and liquid (snliq) of the
 !! surface snow layer resulting from sublimation (frost) / evaporation (dew)
@@ -3236,6 +3247,7 @@ end if   ! opt_gla == 1
 ! output
 
    real (kind=kind_phys),                            intent(out)   :: qsnbot !< melting water out of snow bottom [mm/s]
+   real (kind=kind_phys),                            intent(in)    :: qbsub  !< blowing snow sublimation [mm/s]
 
 ! input and output
 
@@ -3284,7 +3296,7 @@ end if   ! opt_gla == 1
    if(isnow == 0 .and. sneqv > 0.) then
       if(opt_gla == 1) then
         temp   = sneqv
-        sneqv  = sneqv - qsnsub*dt + qsnfro*dt
+        sneqv  = sneqv - (qsnsub + qbsub)*dt + qsnfro*dt
         propor = sneqv/temp
         snowh  = max(0.,propor * snowh)
       elseif(opt_gla == 2) then
@@ -3313,7 +3325,7 @@ end if   ! opt_gla == 1
 
    if ( isnow < 0 ) then !kwm added this if statement to prevent out-of-bounds array references
 
-      wgdif = snice(isnow+1) - qsnsub*dt + qsnfro*dt
+      wgdif = snice(isnow+1) - (qsnsub + qbsub)*dt + qsnfro*dt
       snice(isnow+1) = wgdif
       if (wgdif < 1.e-6 .and. isnow <0) then
          call  combine_glacier (nsnow  ,nsoil  ,                         & !in
@@ -3461,7 +3473,7 @@ end if   ! opt_gla == 1
 !>\ingroup NoahMP_LSM
 !!
   subroutine noahmp_options_glacier(iopt_alb  ,iopt_snf  ,iopt_tbot, iopt_stc, iopt_gla,&
-                                    iopt_sfc, iopt_trs)
+                                    iopt_sfc, iopt_trs, iopt_bsn)
 
   implicit none
 
@@ -3473,6 +3485,7 @@ end if   ! opt_gla == 1
   integer,  intent(in) :: iopt_gla  !< glacier option (1->phase change; 2->simple)
   integer,  intent(in) :: iopt_sfc  !< sfc scheme option
   integer,  intent(in) :: iopt_trs  !< thermal roughness option
+  integer,  intent(in), optional :: iopt_bsn  !< blowing snow option
 
 ! -------------------------------------------------------------------------------------------------
 
@@ -3483,6 +3496,8 @@ end if   ! opt_gla == 1
   opt_gla  = iopt_gla
   opt_sfc  = iopt_sfc
   opt_trs  = iopt_trs
+  opt_bsn  = 0
+  if (present(iopt_bsn)) opt_bsn = iopt_bsn
   
   end subroutine noahmp_options_glacier
  
